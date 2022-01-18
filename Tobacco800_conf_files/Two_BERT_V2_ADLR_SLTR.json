@@ -1,0 +1,14 @@
+{
+    "Parallel": 1,
+    "Version": 2,
+    "BertCalls": 2,
+    "AdLR_SLTR": 1,
+    "num_pages": 2,
+
+ 
+    "directory_tobacco800": "Tobacco800",
+    "BATCH":4,
+    "workers": 2,
+    "num_features": 256,
+    "feature_concatenation": 256
+}

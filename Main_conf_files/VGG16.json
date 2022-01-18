@@ -1,0 +1,21 @@
+{
+    "Parallel": 1,
+    "VGG16": 1,
+    "VGG16_Loss": 0,
+    "num_clases": 1,
+    "AdLR_SLTR": 0,
+    "num_pages": 2,
+    "BertCalls": 0,
+
+
+
+    "Otsu": 1,
+    "num_GPUs": 4,
+    "LR_BASE":  2e-5,
+    "directory_h5df_files": "BigTobacco",
+    "directory_tobacco800": "Tobacco800",
+    "BATCH": 6,
+    "workers": 8,
+    "EPOCH": 20,
+    "BETAS": "0.9#0.99"
+}

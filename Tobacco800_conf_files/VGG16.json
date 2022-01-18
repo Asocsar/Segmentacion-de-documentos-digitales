@@ -1,0 +1,14 @@
+{
+    "Parallel": 0,
+    "VGG16": 1,
+    "num_clases": 2,
+    "AdLR_SLTR": 0,
+    "num_pages": 2,
+    "BertCalls": 0,
+
+
+    "Otsu": 1,
+    "directory_tobacco800": "Tobacco800",
+    "BATCH": 6,
+    "workers": 8
+}
