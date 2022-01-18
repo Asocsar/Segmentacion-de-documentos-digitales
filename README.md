@@ -1,1 +1,1 @@
-# Segmentaci-n-de-documentos-digitales
+# Segmentación de documentos digitales
