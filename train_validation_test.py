@@ -32,9 +32,6 @@ def select_loss(metadata):
     if "VGG16_Loss" in metadata.keys() and metadata['VGG16_Loss']:
         loss_func = nn.CrossEntropyLoss()
 
-    if "SequenceClassification" in metadata.keys() and metadata['SequenceClassification']:
-        loss_func = nn.BCEWithLogitsLoss()
-
     else:
         loss_func = nn.BCELoss()
     
@@ -78,31 +75,16 @@ def train_validation_test_parallel(model, TensorLog, metadata, rank):
 def set_model_parameters_learning(model, metadata):
     BETAS = (float(metadata['BETAS'].split('#')[0]), float(metadata['BETAS'].split('#')[1]))
 
-    if not "LayoutLM_v2" in metadata.keys() or not metadata['LayoutLM_v2']:
-        model_parameters = [{'params': [param for name, param in model.module.bert.named_parameters() if 'embedding' in name],
-                            'lr': metadata['LR_BERT']*metadata['decay_factor'],
-                            'betas': BETAS}]
-        for k in range(model.module.bert.config.n_layers):
-            params = [param for name, param in model.module.bert.named_parameters() if '.layer.' in name and int(name.split('.layer.')[1].split('.')[0]) == k]
-            model_parameters.append({'params': params,
-                                        'lr': metadata['LR_BERT']*(metadata['decay_factor']**k),
-                                        'betas': BETAS})
+
+    model_parameters = [{'params': [param for name, param in model.module.bert.named_parameters() if 'embedding' in name],
+                        'lr': metadata['LR_BERT']*metadata['decay_factor'],
+                        'betas': BETAS}]
+    for k in range(model.module.bert.config.n_layers):
+        params = [param for name, param in model.module.bert.named_parameters() if '.layer.' in name and int(name.split('.layer.')[1].split('.')[0]) == k]
+        model_parameters.append({'params': params,
+                                    'lr': metadata['LR_BERT']*(metadata['decay_factor']**k),
+                                    'betas': BETAS})
     
-    elif "LayoutLM_v2" in metadata.keys() and metadata['LayoutLM_v2']:
-
-        model_parameters = [{'params': [param for name, param in model.module.Layout.named_parameters() if 'embedding' in name],
-                            'lr': metadata['LR_EMBEDDING'],
-                            'betas': BETAS}]
-
-        model_parameters += [{'params': [param for name, param in model.module.Layout.named_parameters() if 'visual.backbone' in name],
-                            'lr': metadata['LR_DETECTRON2'],
-                            'betas': BETAS}]
-
-        for k in range(model.module.Layout.config.num_hidden_layers):
-            params = [param for name, param in model.module.Layout.named_parameters() if '.layer.' in name and int(name.split('.layer.')[1].split('.')[0]) == k]
-            model_parameters.append({'params': params,
-                                        'lr': metadata['LR_Layout']*(metadata['decay_factor']**k),
-                                        'betas': BETAS})
     
     return model_parameters
 
@@ -138,38 +120,27 @@ def train_validation_test_parallel_AdaptativeLR_and_SlantedTriangular(model, Ten
 
 
 def select_dataset(metadata, mode, filename=None, directory=None):
-    if "LayoutLM_v2" not in metadata.keys() or not metadata["LayoutLM_v2"]:
-        if "VGG16" in metadata.keys() and metadata["VGG16"]:
-            transforms = data_transforms_VGG[mode]
-        else:
-            transforms = data_transforms[mode]
 
-
-    if "LayoutLM_v2" not in metadata.keys() or not metadata["LayoutLM_v2"]:
-        if metadata['num_pages'] == 2:
-            dataset = H5Dataset_noRepeat(path=os.path.join(directory, filename),
-                            data_transforms=transforms,
-                            phase=mode, metadata=metadata)
-        else:
-            dataset = H5Dataset_ThreePages(path=os.path.join(directory, filename),
-                            data_transforms=transforms,
-                            phase=mode, metadata=metadata)
-    
+    if "VGG16" in metadata.keys() and metadata["VGG16"]:
+        transforms = data_transforms_VGG[mode]
     else:
-        if 'Non_Split_Dataset' in metadata.keys() and metadata['Non_Split_Dataset']:
-            dataset = LayouLMV2_OnLine_Dataset(phase=mode, metadata=metadata)
-        else:
-            if metadata['num_pages'] == 2:
-                dataset = LayouLMV2_OffLine_Dataset(path=os.path.join(directory, filename), phase=mode, metadata=metadata)
-            elif metadata['num_pages'] == 3:
-                dataset = LayouLMV2_Three_OffLine_Dataset(path=os.path.join(directory, filename), phase=mode, metadata=metadata)
+        transforms = data_transforms[mode]
+
+
+    if metadata['num_pages'] == 2:
+        dataset = H5Dataset_noRepeat(path=os.path.join(directory, filename),
+                        data_transforms=transforms,
+                        phase=mode, metadata=metadata)
+    else:
+        dataset = H5Dataset_ThreePages(path=os.path.join(directory, filename),
+                        data_transforms=transforms,
+                        phase=mode, metadata=metadata)
+    
+
     return dataset
 
 
-def call_model( metadata, model, rank, dataset, img1=None, img2=None, img3=None, ocr=None, 
-                tokens1=None, token_type_ids1=None, attention_mask1=None, box1=None, 
-                tokens2=None, token_type_ids2=None, attention_mask2=None, box2=None,
-                tokens3=None, token_type_ids3=None, attention_mask3=None, box3=None):
+def call_model( metadata, model, rank, dataset, img1=None, img2=None, img3=None, ocr=None):
 
     if metadata["BertCalls"] == 2:
         ocr1 = ocr[:, 0, :].to(rank)
@@ -179,16 +150,6 @@ def call_model( metadata, model, rank, dataset, img1=None, img2=None, img3=None,
         ocr1 = ocr[:, 0, :].to(rank)
         ocr2 = ocr[:, 1, :].to(rank)
         ocr3 = ocr[:, 2, :].to(rank)
-    
-    if "LayoutLM_v2" in metadata.keys() and metadata['LayoutLM_v2']:
-        if metadata['num_pages'] == 2:
-            outputs = model(img1, tokens1, token_type_ids1, attention_mask1, box1, 
-                            img2, tokens2, token_type_ids2, attention_mask2, box2)
-        elif metadata['num_pages'] == 3:
-            outputs = model(img1, tokens1, token_type_ids1, attention_mask1, box1, 
-                            img2, tokens2, token_type_ids2, attention_mask2, box2,
-                            img3, tokens3, token_type_ids3, attention_mask3, box3)
-        return outputs
 
 
     if metadata['num_pages'] == 2:
@@ -237,35 +198,15 @@ def obtain_ids(metadata, id1, id2, id3):
 
 
 def extract_data(metadata, batch, rank):
-    if "LayoutLM_v2" not in metadata.keys() or not metadata["LayoutLM_v2"]:
-        tokens1 = token_type_ids1 = attention_mask1 = box1 = None
-        tokens2 = token_type_ids2 = attention_mask2 = box2 = None
-        tokens3 = token_type_ids3 = attention_mask3 = box3 = None
-        if metadata['num_pages'] == 2:
-            img1, img2, ocr, label, id1, id2 = batch['image1'].to(rank), batch['image2'].to(rank), batch['ocr'].to(rank), batch['label'].to(rank), batch['id1'], batch['id2']
-            img3 = None
-            id3 = None
-        else:
-            img1, img2, img3, ocr, label, id1, id2, id3 = batch['image1'].to(rank), batch['image2'].to(rank), batch['image3'].to(rank), batch['ocr'].to(rank), batch['label'].to(rank), batch['id1'], batch['id2'], batch['id3']
-        
+    if metadata['num_pages'] == 2:
+        img1, img2, ocr, label, id1, id2 = batch['image1'].to(rank), batch['image2'].to(rank), batch['ocr'].to(rank), batch['label'].to(rank), batch['id1'], batch['id2']
+        img3 = None
+        id3 = None
     else:
-        if metadata['num_pages'] == 2:
-            ocr = id3 = img3 = None
-            tokens3 = token_type_ids3 = attention_mask3 = box3 = None
-            tokens1, token_type_ids1, attention_mask1, box1, img1 = batch['tokens1'].to(rank), batch['token_type_ids1'].to(rank), batch['attention_mask1'].to(rank), batch['box1'].to(rank), batch['image1'].to(rank)
-            tokens2, token_type_ids2, attention_mask2, box2, img2 = batch['tokens2'].to(rank), batch['token_type_ids2'].to(rank), batch['attention_mask2'].to(rank), batch['box2'].to(rank), batch['image2'].to(rank)
-            label = batch['label'].to(rank)
-            id1, id2 = batch['id1'], batch['id2']
-        elif metadata['num_pages'] == 3:
-            ocr = None
-            tokens1, token_type_ids1, attention_mask1, box1, img1 = batch['tokens1'].to(rank), batch['token_type_ids1'].to(rank), batch['attention_mask1'].to(rank), batch['box1'].to(rank), batch['image1'].to(rank)
-            tokens2, token_type_ids2, attention_mask2, box2, img2 = batch['tokens2'].to(rank), batch['token_type_ids2'].to(rank), batch['attention_mask2'].to(rank), batch['box2'].to(rank), batch['image2'].to(rank)
-            tokens3, token_type_ids3, attention_mask3, box3, img3 = batch['tokens3'].to(rank), batch['token_type_ids3'].to(rank), batch['attention_mask3'].to(rank), batch['box3'].to(rank), batch['image3'].to(rank)
-            label = batch['label'].to(rank)
-            id1, id2, id3 = batch['id1'], batch['id2'], batch['id3']
+        img1, img2, img3, ocr, label, id1, id2, id3 = batch['image1'].to(rank), batch['image2'].to(rank), batch['image3'].to(rank), batch['ocr'].to(rank), batch['label'].to(rank), batch['id1'], batch['id2'], batch['id3']
+        
 
-
-    return img1, img2, img3, ocr, label, id1, id2, id3, tokens1, token_type_ids1, attention_mask1, box1, tokens2, token_type_ids2, attention_mask2, box2, tokens3, token_type_ids3, attention_mask3, box3
+    return img1, img2, img3, ocr, label, id1, id2, id3
 
 
 def compute_correct_samples(metadata, label, outputs):
@@ -400,7 +341,7 @@ def train_val_test_loop_dataset_split_multipleFiles(epoch, model, TensorLog, met
 
                 batch_start =  time.time()
 
-                img1, img2, img3, ocr, label, id1, id2, id3, tokens1, token_type_ids1, attention_mask1, box1, tokens2, token_type_ids2, attention_mask2, box2, tokens3, token_type_ids3, attention_mask3, box3 = extract_data(metadata, batch, rank)
+                img1, img2, img3, ocr, label, id1, id2, id3 = extract_data(metadata, batch, rank)
 
 
                 id1, id2, id3 = obtain_ids(metadata, id1, id2, id3)
@@ -412,19 +353,14 @@ def train_val_test_loop_dataset_split_multipleFiles(epoch, model, TensorLog, met
 
 
                 outputs = call_model(   
-                                        metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr, 
-                                        tokens1=tokens1, token_type_ids1=token_type_ids1,attention_mask1=attention_mask1, box1=box1,
-                                        tokens2=tokens2, token_type_ids2=token_type_ids2, attention_mask2=attention_mask2, box2=box2,
-                                        tokens3=tokens3, token_type_ids3=token_type_ids3, attention_mask3=attention_mask3, box3=box3
+                                        metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr
                                     )
                 
                 
 
 
-                if "SequenceClassification" in metadata.keys() and metadata['SequenceClassification']:
-                    correct += compute_correct_samples(metadata, label, torch.sigmoid(outputs))
-                else:
-                    correct += compute_correct_samples(metadata, label, outputs)
+
+                correct += compute_correct_samples(metadata, label, outputs)
 
 
 
@@ -434,9 +370,6 @@ def train_val_test_loop_dataset_split_multipleFiles(epoch, model, TensorLog, met
                     y_pred = numpy.concatenate([y_pred, top_pred.cpu().numpy().flatten()])
                     y_truth = numpy.concatenate([y_truth,top_label.cpu().numpy().flatten()])
 
-                elif "SequenceClassification" in metadata.keys() and metadata['SequenceClassification']:
-                    y_pred = numpy.concatenate([y_pred, (torch.sigmoid(outputs) >= 0.5).cpu().numpy().flatten()])
-                    y_truth = numpy.concatenate([y_truth,label.cpu().numpy().flatten()])
                 else:
                     y_pred = numpy.concatenate([y_pred, (outputs >= 0.5).cpu().numpy().flatten()])
                     y_truth = numpy.concatenate([y_truth,label.cpu().numpy().flatten()])
@@ -444,17 +377,6 @@ def train_val_test_loop_dataset_split_multipleFiles(epoch, model, TensorLog, met
 
                 loss_batch = loss_func(outputs, label)
                 
-                '''if torch.sum(torch.isnan(outputs)) >= 1:
-                    print('Nan in batch', i)
-                    
-                    print('=============')
-                    print('ID1:', id1)
-                    print('ID2:', id2)
-                    print('ID3:', id3)
-                    print('Label:', label)
-                    print('Outputs:', outputs)
-                    print('Loss_batch:', loss_batch)
-                    print('=============')'''
                   
                 loss_batch.backward()
                 optimizer.step()
@@ -471,7 +393,6 @@ def train_val_test_loop_dataset_split_multipleFiles(epoch, model, TensorLog, met
                 
                 batch_end =  time.time() - batch_start
                 time_batch = timedelta(seconds=batch_end)
-                #print('Batch Time', time_batch)
                 load_start =  time.time()
 
                 
@@ -543,10 +464,9 @@ def train_val_test_loop_dataset_United(epoch, model, TensorLog, metadata, loss_f
         for i, batch in enumerate(dataloader):
             load_end =  time.time() - load_start
             time_load = timedelta(seconds=load_end)
-            #print('Time Load data', time_load)
 
             batch_start =  time.time()
-            img1, img2, img3, ocr, label, id1, id2, id3, tokens1, token_type_ids1, attention_mask1, box1, tokens2, token_type_ids2, attention_mask2, box2, tokens3, token_type_ids3, attention_mask3, box3 = extract_data(metadata, batch, rank)
+            img1, img2, img3, ocr, label, id1, id2, id3 = extract_data(metadata, batch, rank)
 
 
             id1, id2, id3 = obtain_ids(metadata, id1, id2, id3)
@@ -556,10 +476,7 @@ def train_val_test_loop_dataset_United(epoch, model, TensorLog, metadata, loss_f
             optimizer.zero_grad()
 
             outputs = call_model(   
-                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr, 
-                                    tokens1=tokens1, token_type_ids1=token_type_ids1,attention_mask1=attention_mask1, box1=box1,
-                                    tokens2=tokens2, token_type_ids2=token_type_ids2, attention_mask2=attention_mask2, box2=box2,
-                                    tokens3=tokens3, token_type_ids3=token_type_ids3, attention_mask3=attention_mask3, box3=box3
+                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr
                                 )
 
             correct += compute_correct_samples(metadata, label, outputs)
@@ -615,7 +532,7 @@ def test_tobacco800(model, metadata, TensorLog):
     model = model.eval()
 
     if folders_train is not None:
-        for i in range(30): #range(metadata['EPOCH']):
+        for i in range(metadata['EPOCH']):
             print('==================')
             print('Epoch', i)
             for mode, directory in folders_train:
@@ -665,7 +582,7 @@ def tobacco800_loop(model, metadata, TensorLog, directory, mode, rank, optimizer
 
     
         for i, batch in enumerate(dataloader):
-            img1, img2, img3, ocr, label, id1, id2, id3, tokens1, token_type_ids1, attention_mask1, box1, tokens2, token_type_ids2, attention_mask2, box2, tokens3, token_type_ids3, attention_mask3, box3 = extract_data(metadata, batch, rank)
+            img1, img2, img3, ocr, label, id1, id2, id3 = extract_data(metadata, batch, rank)
 
             id1, id2, id3 = obtain_ids(metadata, id1, id2, id3)
 
@@ -678,10 +595,7 @@ def tobacco800_loop(model, metadata, TensorLog, directory, mode, rank, optimizer
             if loss_func is not None:
                 optimizer.zero_grad()
                 outputs = call_model(   
-                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr, 
-                                    tokens1=tokens1, token_type_ids1=token_type_ids1,attention_mask1=attention_mask1, box1=box1,
-                                    tokens2=tokens2, token_type_ids2=token_type_ids2, attention_mask2=attention_mask2, box2=box2,
-                                    tokens3=tokens3, token_type_ids3=token_type_ids3, attention_mask3=attention_mask3, box3=box3
+                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr
                                 )
                 
                 loss_batch = loss_func(outputs, label)
@@ -691,19 +605,14 @@ def tobacco800_loop(model, metadata, TensorLog, directory, mode, rank, optimizer
             else:
                 with torch.no_grad():
                     outputs = call_model(   
-                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr, 
-                                    tokens1=tokens1, token_type_ids1=token_type_ids1,attention_mask1=attention_mask1, box1=box1,
-                                    tokens2=tokens2, token_type_ids2=token_type_ids2, attention_mask2=attention_mask2, box2=box2,
-                                    tokens3=tokens3, token_type_ids3=token_type_ids3, attention_mask3=attention_mask3, box3=box3
+                                    metadata, model, rank, dataset, img1=img1, img2=img2, img3=img3, ocr=ocr
                                 )
                 
 
             
 
-            if "SequenceClassification" in metadata.keys() and metadata['SequenceClassification']:
-                correct += compute_correct_samples(metadata, label, torch.sigmoid(outputs))
-            else:
-                correct += compute_correct_samples(metadata, label, outputs)
+
+            correct += compute_correct_samples(metadata, label, outputs)
                 
 
             if "VGG16_Loss" in metadata.keys() and metadata["VGG16_Loss"]:
@@ -712,9 +621,7 @@ def tobacco800_loop(model, metadata, TensorLog, directory, mode, rank, optimizer
                 y_pred = numpy.concatenate([y_pred, top_pred.cpu().numpy().flatten()])
                 y_truth = numpy.concatenate([y_truth,top_label.cpu().numpy().flatten()])
 
-            elif "SequenceClassification" in metadata.keys() and metadata['SequenceClassification']:
-                y_pred = numpy.concatenate([y_pred, (torch.sigmoid(outputs) >= 0.5).cpu().numpy().flatten()])
-                y_truth = numpy.concatenate([y_truth,label.cpu().numpy().flatten()])
+
             else:
                 y_pred = numpy.concatenate([y_pred, (outputs >= 0.5).cpu().numpy().flatten()])
                 y_truth = numpy.concatenate([y_truth,label.cpu().numpy().flatten()])
@@ -738,13 +645,13 @@ def tobacco800_loop(model, metadata, TensorLog, directory, mode, rank, optimizer
     print('The average accuracy is {accuracy:.3f}, f1 score {f1score:.3f} and kappa score {kappascore:.3f}'.format(accuracy=accuracy, f1score=f1_score, kappascore=kappa_score))
     #TensorLog.add_hparams({"Test_Accuracy": accuracy, "F1_Score": f1_score}, {"Test_Accuracy": accuracy, "F1_Score": f1_score})
 
-    if False and mode == 'test':
+    if mode == 'test':
         labels = ['New_document', 'Same_Document']
         conf_matrix = confusion_matrix(y_truth, y_pred)
 
         
 
-        ax = sns.heatmap(conf_matrix, annot=True, fmt='g');  #annot=True to annotate cells, ftm='g' to disable scientific notation
+        ax = sns.heatmap(conf_matrix, annot=True, fmt='g')
 
         for e, t in enumerate(ax.texts):
             if e < 2:
