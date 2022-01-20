@@ -17,7 +17,6 @@ from Models.ThreePages_With_DenseLayer import *
 
 from Models.VGG16 import *
 
-from Models.LayoutLM_v2 import *
 
 
 import json
@@ -47,19 +46,6 @@ def load_checkpoint(model):
 
 
 def model_election(metadata):
-    if "LayoutLM_v2" in metadata.keys() and metadata['LayoutLM_v2']:
-        if metadata['num_pages'] == 2:
-            if 'SequenceClassification' in metadata.keys() and metadata['SequenceClassification']:
-                model = LayoutLM_SequenceClassification()
-            else:
-                model = LayoutLM_v2()
-        elif metadata['num_pages'] == 3:
-            if 'SequenceClassification' in metadata.keys() and metadata['SequenceClassification']:
-                model = LayoutLM_Three_SequenceClassification()
-            else:
-                model = LayoutLM_Three_v2()
-        return model 
-
     if "VGG16" in metadata.keys() and metadata['VGG16']:
         if metadata['num_pages'] == 2:
             model = VGG16(metadata['num_clases'])
