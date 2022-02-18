@@ -1,4 +1,4 @@
-# Segmentacion-de-documentos-digitales
+# # Segmentacion-de-documentos-digitales
 
 A continuación se presenta una guia de como entrenar los modelos presentes en este repositorio asi como al importancia de los diferentes ficheros que lo componen y como ejecutarlos.
 
@@ -100,3 +100,13 @@ Para crear un dataset los scripts se deben ejecutar en el siguiente orden:
 	* iden: Indica la lista que se debe leer, este valor puede oscilar de 0 a 3 [string] (NECESARIO).
 	* BigTobacco: Indicamos si estamos creando ficheros para BigTobacco [bool].
 	* Tobacco800: Indicamos si estamos creando ficheros para Tobacco800 [bool].
+3. create_H5DF.py: Para ejecutar este fichero se debe llamar de la forma `python createHDF5.py [agrs]` y los argumentos de entrada son los siguientes:
+	* `filtering`: Indica si debe o no filtrar los datos de entrenamiento [bool].
+	* `visualize_data`: Indica si crea o no plots mostrando la distribución de los datos de entrenamiento [bool].
+	* `create_json_information`: Indica si debe o no crear un JSON con toda la información de los documentos respecto al balanceo de clases [bool].
+	* `mode`: Indica si aplica modo "Tail" o "Head" en el momento de filtrar los datos. Es necesario solo si se indica `filtering`.
+	* `tobacco800`: Indica si se estan creando ficheros H5DF relacionados con tobaco800 [bool]. 
+	* `splitTobacco800`: Indica si debe o no dividir los datos del dataset de tobacco800 entre entrenamiento validación y test [bool].
+	* `trainT800`: Indica porcion de entrenamiento de tobacco800 en caso de dividir el dataset [bool].
+	* `valT800`: Indica porcion de validación de tobacco800 en caso de dividir el dataset [bool].
+	* `testT800`: Indica porcion de test de tobacco800 en caso de dividir el dataset [bool].
