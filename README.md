@@ -1,4 +1,4 @@
-# # Segmentacion-de-documentos-digitales
+# Segmentacion-de-documentos-digitales
 
 A continuación se presenta una guia de como entrenar los modelos presentes en este repositorio asi como al importancia de los diferentes ficheros que lo componen y como ejecutarlos.
 
