@@ -17,6 +17,7 @@ from functools import partial
 from tqdm import tqdm
 import argparse
 from statistics import median
+from transformers import LayoutLMv2FeatureExtractor, LayoutLMv2TokenizerFast, LayoutLMv2Processor
 from multiprocessing import Pool
 from multiprocessing import freeze_support
 
@@ -182,10 +183,10 @@ def apply_threshold(df, name, mode, plot_relation=False):
         threshold = int(max(sorted(list(dictionary.keys())))*0.9)
         long_train_aux = {k: v for k, v in dictionary.items() if k >= threshold}
     elif mode == 'Tail':
-        threshold = int(max(sorted(list(dictionary.keys())))*0.012) #0.0055
+        threshold = int(max(sorted(list(dictionary.keys())))*0.0055) # 0.012
         long_train_aux = {k: v for k, v in dictionary.items() if k <= threshold}
-        #for i in range(2,max(list(long_train_aux.keys()))+1,1):
-        #    long_train_aux[i] = int(long_train_aux[i]/3)
+        for i in range(2,max(list(long_train_aux.keys()))+1,1):
+            long_train_aux[i] = int(long_train_aux[i]/3)
     
     
     all_new_documents_sum = sum(long_train_aux.values())
@@ -259,6 +260,35 @@ def creation_train_val_test_basedOnCSV(st):
     return train, validation, test
 
 
+def creation_train_val_test_basedOnCSV_Layout(storage):
+        df_train = pd.read_csv(os.path.join('train.csv'), header=None)
+        df_train.columns = ['img_dir', 'number']
+        df_val = pd.read_csv(os.path.join('val.csv'), header=None)
+        df_val.columns = ['img_dir', 'number']
+        df_test = pd.read_csv(os.path.join('test.csv'), header=None, sep=' ')
+        df_test.columns = ['img_dir', 'number']
+
+        def create_portion_dataset(df):
+            base_path = 'scratch/bsc31/bsc31282/BigTobacco'
+            samples = []
+            columns = ['img_dirs', 'tokens', 'token_type_ids', 'attention_masks', 'boxs']
+            keys = storage.keys()
+            for doc in df['img_dir']:
+                if os.path.join(base_path, doc) in keys:
+                    samples.append(storage[os.path.join(base_path, doc)])
+
+            df = pd.DataFrame(samples, columns=columns)
+            return df
+    
+        train = create_portion_dataset(df_train)
+        
+        validation = create_portion_dataset(df_val)
+
+        test = create_portion_dataset(df_test)
+
+        return train, validation, test
+
+
 def load_dictionaries(tobacco800):
     if tobacco800:
         all_dictionaries = [f for f in listdir(path_dictionaries_800) if isfile(join(path_dictionaries_800, f))]
@@ -303,6 +333,26 @@ def create_relations(df):
                 
             else :
                 dataset.append([images_paths[i], ocrs_content[i], 0])
+                K_0 += 1
+    
+    return dataset
+
+
+def create_relations_Layout(df):
+    dataset = []
+    i = 0
+    K_0 = 0
+    K_1 = 0
+    for index, elem in df.iterrows():
+        images_paths, ocrs_content, token_type_ids, attention_masks, boxs = elem[0], elem[1], elem[2], elem[3], elem[4]
+        for i in range(len(images_paths)):
+
+            if i == 0:
+                dataset.append([images_paths[i], ocrs_content[i], token_type_ids[i], attention_masks[i], boxs[i], 1])
+                K_1 += 1
+                
+            else :
+                dataset.append([images_paths[i], ocrs_content[i], token_type_ids[i], attention_masks[i], boxs[i], 0])
                 K_0 += 1
     
     return dataset
@@ -401,7 +451,109 @@ def create_h5df_files(df, section, img_size, tobacco800=False, filtered=False, t
         hdf5_file.close()
 
 
+def create_h5df_files_Layout(df, section, processor, iden, idenMax, img_size=224):
+    columns = ['img_dirs', 'tokens', 'token_type_ids', 'attention_mask', 'box', 'labels']
+    df = pd.DataFrame(df, columns=columns)
 
+    base_path = os.sep.join(os.getcwd().split(os.sep)[:-1])
+
+    list_of_dfs = [df.loc[i:i+size-1,:] for i in range(0, len(df),size)]
+    
+    #ADD FIRST ELEMENT OF THE NEXT FILE AS THE LAST ELEMENT OF THE ACTUAL FILE
+    for i in range(len(list_of_dfs)-1):
+        first_values_next_frame = list_of_dfs[i+1].iloc[0, :].to_dict()
+        for k, v in first_values_next_frame.items():
+            first_values_next_frame[k] = [v]
+        next_element = pd.DataFrame(first_values_next_frame, columns=list_of_dfs[i].columns, index=[len(list_of_dfs[i])])
+        list_of_dfs[i] = pd.concat([list_of_dfs[i], next_element], ignore_index=True, axis=0)
+
+    total_sub_df = len(list_of_dfs)
+    print('Total number Files', total_sub_df)
+    number_of_df_job = int(total_sub_df/idenMax) + max(1, int(int(total_sub_df%idenMax) / idenMax))
+    print('Total number Jobs', idenMax)
+    print('Each job will process' ,number_of_df_job, 'which makes a total of', number_of_df_job*idenMax, 'files.')
+
+    max_index = number_of_df_job*iden
+    min_index = number_of_df_job*(iden-1)
+
+    for i, sub_df in enumerate(list_of_dfs):
+        if i >= min_index and i < max_index:
+            name_file = str(section) + '_' + str(i) + '.hdf5'
+            Path(os.path.join(base_path, 'BigTobacco_Layout', section)).mkdir(parents=True, exist_ok=True)
+            hdf5_path = os.path.join(base_path, 'BigTobacco_Layout', section, name_file)
+
+            hdf5_file = h5py.File(hdf5_path, mode='w')
+            dt = h5py.special_dtype(vlen=str)
+
+            image_datatype = h5py.h5t.STD_U8BE
+            sub_df_shape = (len(sub_df),  3, img_size, img_size)
+
+            hdf5_file.create_dataset(section + "_id", (len(sub_df),), dtype=dt)
+            hdf5_file.create_dataset(section + "_token_type_ids", (len(sub_df), padding_layout), np.int8)
+            hdf5_file.create_dataset(section + "_attention_mask", (len(sub_df), padding_layout), np.int8)
+            hdf5_file.create_dataset(section + "_bbox", (len(sub_df), padding_layout, 4), np.int16)
+            hdf5_file.create_dataset(section + "_imgs", sub_df_shape, image_datatype)\
+            
+            hdf5_file.create_dataset(section + "_ocrs", (len(sub_df), padding_layout), np.int16)
+
+            hdf5_file.create_dataset(section + "_labels", (len(sub_df),), np.int8)
+            hdf5_file[section + "_labels"][...] = sub_df['labels'].values
+
+
+
+            def load_image(df, hdf5_file, tag):
+                image_paths1 = df["img_dirs"].values
+
+                pbar = trange(len(df), desc='Processing ' + tag, leave=True)
+                
+                
+                for i in pbar:
+                    im1 = Image.open(image_paths1[i]).convert("RGB")
+
+                    image = np.asarray(processor(im1, return_tensors='pt')['pixel_values'])[0, ...]
+
+                    hdf5_file[tag + "_imgs"][i,...] = image[None]
+                    hdf5_file[tag + "_id"][i,...] = image_paths1[i]
+                    hdf5_file[tag + "_token_type_ids"][i,...] = df['token_type_ids'].iloc[i]
+                    hdf5_file[tag + "_attention_mask"][i,...] = df['attention_mask'].iloc[i]
+                    hdf5_file[tag + "_bbox"][i,...] = df['box'].iloc[i]
+                    hdf5_file[tag + "_ocrs"][i,...] = df['tokens'].iloc[i]
+
+            load_image(sub_df, hdf5_file, section)
+
+            hdf5_file.close()
+
+
+def create_h5df_files_LaytoutLM(iden, idenMax):
+
+    root_path = os.getcwd()
+    dictionary_path = os.path.join(root_path, 'TobaccoLayout')
+    all_dictionaries = [f for f in listdir(dictionary_path) if isfile(join(dictionary_path, f))]
+
+    def load_dictionaries_Layout(all_dictionaries, dictionary_path):
+        storage = {}
+
+        for dictionary in all_dictionaries:
+            if dictionary[0] != '.':
+                with open(os.path.join(dictionary_path, dictionary), 'rb') as fp:
+                    print('Loading', dictionary + '....')
+                    storage = {**storage, **pickle.load(fp)}
+                    print(dictionary, 'loaded')
+        
+        return storage
+    
+    storage = load_dictionaries_Layout(all_dictionaries, dictionary_path)
+    train, validation, test = creation_train_val_test_basedOnCSV_Layout(storage)
+
+
+
+    all_df = [('train', train), ('validation', validation), ('test', test)]
+
+    feature_extractor = LayoutLMv2FeatureExtractor(apply_ocr=False)
+
+    for section, df in all_df:
+        df = create_relations_Layout(df)
+        create_h5df_files_Layout(df, section, feature_extractor, iden, idenMax)
 
 
 if __name__ == '__main__':
@@ -424,8 +576,20 @@ if __name__ == '__main__':
                     help="Indicate proportion of validation for Tobacco800")
     parser.add_argument("--testT800", type=float,
                     help="Indicate proportion of test for Tobacco800")
+    parser.add_argument("--LayoutLM", type=bool,
+                    help="Indicate that we are creating LayoutLM Files", default=False)
+    parser.add_argument("--LayoutId", type=int,
+                    help="Indicate wich portion will generate", default=-1)
+    parser.add_argument("--LayoutIdMax", type=int,
+                    help="Indicate the maximum id for one job, default is set to 3 (the lowest value is 1)", default=4)
     
     args = parser.parse_args()
+
+
+
+    if args.LayoutLM:
+        create_h5df_files_LaytoutLM(args.LayoutId, args.LayoutIdMax)
+        exit(0)
 
     mode = args.mode
     if mode is not None:
@@ -456,6 +620,8 @@ if __name__ == '__main__':
         create_json_information_documents_pages(train, validation, test)
     if args.filtering:
         train = apply_threshold(train, name='train', mode=mode, plot_relation=args.visualize_data)
+
+    exit(0)
 
     if args.tobacco800 and not args.splitTobacco800:
         all_df = [('test', test)]
