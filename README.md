@@ -1,3 +1,4 @@
+
 # Segmentacion-de-documentos-digitales
 
 A continuación se presenta una guia de como entrenar los modelos presentes en este repositorio asi como al importancia de los diferentes ficheros que lo componen y como ejecutarlos.
@@ -100,6 +101,8 @@ Para crear un dataset los scripts se deben ejecutar en el siguiente orden:
 	* iden: Indica la lista que se debe leer, este valor puede oscilar de 0 a 3 [string] (NECESARIO).
 	* BigTobacco: Indicamos si estamos creando ficheros para BigTobacco [bool].
 	* Tobacco800: Indicamos si estamos creando ficheros para Tobacco800 [bool].
+	* LayoutLM: Indicamos si estamos creando un dataset para el modelo LayoutLM_V2 [bool].
+	* LayoutLM_Tobacco800: Indicamos si estamos preparando tobaco800 para LayoutLM_V2 [bool].
 3. create_H5DF.py: Para ejecutar este fichero se debe llamar de la forma `python createHDF5.py [agrs]` y los argumentos de entrada son los siguientes:
 	* `filtering`: Indica si debe o no filtrar los datos de entrenamiento [bool].
 	* `visualize_data`: Indica si crea o no plots mostrando la distribución de los datos de entrenamiento [bool].
@@ -110,3 +113,6 @@ Para crear un dataset los scripts se deben ejecutar en el siguiente orden:
 	* `trainT800`: Indica porcion de entrenamiento de tobacco800 en caso de dividir el dataset [bool].
 	* `valT800`: Indica porcion de validación de tobacco800 en caso de dividir el dataset [bool].
 	* `testT800`: Indica porcion de test de tobacco800 en caso de dividir el dataset [bool].
+	* `LayoutLM`: Indica que estamos creando H5DF para LayoutLM_V2 [bool].
+	* `LayoutId`: La creación del dataset para Layout es más lenta, por lo que se permite la posibilidad de dividir la creación de ficheros de forma paralelizada, en un caso de lanzar el job 1 de un total de 4 jobs (que se deberá indicar como el numero 3 en el parametro LayoutIdMax), este parámetro tendría el valor 0.
+	* `LayoutIdMax`: Numero máximo de jobs a lanzar pra crear los ficheros.
